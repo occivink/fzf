@@ -20,7 +20,7 @@ const (
 	defaultWidth  = 80
 	defaultHeight = 24
 
-	defaultEscDelay = 100
+	defaultEscDelay = 10
 	escPollInterval = 5
 	offsetPollTries = 10
 )
@@ -165,7 +165,7 @@ func atoi(s string, defaultValue int) int {
 }
 
 func (r *LightRenderer) Init() {
-	r.escDelay = atoi(os.Getenv("ESCDELAY"), defaultEscDelay)
+	r.escDelay = defaultEscDelay
 
 	fd := r.fd()
 	origState, err := terminal.GetState(fd)

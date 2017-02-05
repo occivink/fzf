@@ -129,14 +129,7 @@ func (r *FullscreenRenderer) Init() {
 	C.nonl()
 	C.keypad(C.stdscr, true)
 
-	delay := 50
-	delayEnv := os.Getenv("ESCDELAY")
-	if len(delayEnv) > 0 {
-		num, err := strconv.Atoi(delayEnv)
-		if err == nil && num >= 0 {
-			delay = num
-		}
-	}
+	delay := 10
 	C.set_escdelay(C.int(delay))
 
 	if r.theme != nil {
