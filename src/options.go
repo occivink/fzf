@@ -12,7 +12,7 @@ import (
 	"github.com/junegunn/fzf/src/tui"
 	"github.com/junegunn/fzf/src/util"
 
-	"github.com/junegunn/go-shellwords"
+	"github.com/mattn/go-shellwords"
 )
 
 const usage = `usage: fzf [options]
@@ -86,6 +86,7 @@ const usage = `usage: fzf [options]
     --read0               Read input delimited by ASCII NUL characters
     --print0              Print output delimited by ASCII NUL characters
     --sync                Synchronous search for multi-staged filtering
+    --version             Display version information and exit
 
   Environment variables
     FZF_DEFAULT_COMMAND   Default command to use when input is tty
@@ -186,6 +187,7 @@ type Options struct {
 	Margin      [4]sizeSpec
 	Bordered    bool
 	Tabstop     int
+	ClearOnExit bool
 	Version     bool
 }
 
@@ -234,6 +236,7 @@ func defaultOptions() *Options {
 		HeaderLines: 0,
 		Margin:      defaultMargin(),
 		Tabstop:     8,
+		ClearOnExit: true,
 		Version:     false}
 }
 
@@ -397,8 +400,10 @@ func parseKeyChords(str string, message string) map[int]string {
 			chord = tui.BSpace
 		case "ctrl-space":
 			chord = tui.CtrlSpace
+		case "change":
+			chord = tui.Change
 		case "alt-enter", "alt-return":
-			chord = tui.AltEnter
+			chord = tui.CtrlAltM
 		case "alt-space":
 			chord = tui.AltSpace
 		case "alt-/":
@@ -425,6 +430,10 @@ func parseKeyChords(str string, message string) map[int]string {
 			chord = tui.SLeft
 		case "shift-right":
 			chord = tui.SRight
+		case "left-click":
+			chord = tui.LeftClick
+		case "right-click":
+			chord = tui.RightClick
 		case "double-click":
 			chord = tui.DoubleClick
 		case "f10":
@@ -434,7 +443,9 @@ func parseKeyChords(str string, message string) map[int]string {
 		case "f12":
 			chord = tui.F12
 		default:
-			if len(key) == 6 && strings.HasPrefix(lkey, "ctrl-") && isAlphabet(lkey[5]) {
+			if len(key) == 10 && strings.HasPrefix(lkey, "ctrl-alt-") && isAlphabet(lkey[9]) {
+				chord = tui.CtrlAltA + int(lkey[9]) - 'a'
+			} else if len(key) == 6 && strings.HasPrefix(lkey, "ctrl-") && isAlphabet(lkey[5]) {
 				chord = tui.CtrlA + int(lkey[5]) - 'a'
 			} else if len(key) == 5 && strings.HasPrefix(lkey, "alt-") && isAlphabet(lkey[4]) {
 				chord = tui.AltA + int(lkey[4]) - 'a'
@@ -651,8 +662,12 @@ func parseKeymap(keymap map[int][]action, str string) {
 				appendAction(actAbort)
 			case "accept":
 				appendAction(actAccept)
+			case "accept-non-empty":
+				appendAction(actAcceptNonEmpty)
 			case "print-query":
 				appendAction(actPrintQuery)
+			case "replace-query":
+				appendAction(actReplaceQuery)
 			case "backward-char":
 				appendAction(actBackwardChar)
 			case "backward-delete-char":
@@ -709,6 +724,8 @@ func parseKeymap(keymap map[int][]action, str string) {
 				appendAction(actDown)
 			case "up":
 				appendAction(actUp)
+			case "top":
+				appendAction(actTop)
 			case "page-up":
 				appendAction(actPageUp)
 			case "page-down":
@@ -723,6 +740,8 @@ func parseKeymap(keymap map[int][]action, str string) {
 				appendAction(actNextHistory)
 			case "toggle-preview":
 				appendAction(actTogglePreview)
+			case "toggle-preview-wrap":
+				appendAction(actTogglePreviewWrap)
 			case "toggle-sort":
 				appendAction(actToggleSort)
 			case "preview-up":
@@ -822,9 +841,6 @@ func parseSize(str string, maxPercent float64, label string) sizeSpec {
 }
 
 func parseHeight(str string) sizeSpec {
-	if util.IsWindows() {
-		errorExit("--height options is currently not supported on Windows")
-	}
 	size := parseSize(str, 100, "height")
 	return size
 }
@@ -951,7 +967,11 @@ func parseOptions(opts *Options, allArgs []string) {
 		case "--algo":
 			opts.FuzzyAlgo = parseAlgo(nextString(allArgs, &i, "algorithm required (v1|v2)"))
 		case "--expect":
-			opts.Expect = parseKeyChords(nextString(allArgs, &i, "key names required"), "key names required")
+			for k, v := range parseKeyChords(nextString(allArgs, &i, "key names required"), "key names required") {
+				opts.Expect[k] = v
+			}
+		case "--no-expect":
+			opts.Expect = make(map[int]string)
 		case "--tiebreak":
 			opts.Criteria = parseTiebreak(nextString(allArgs, &i, "sort criterion required"))
 		case "--bind":
@@ -1097,6 +1117,10 @@ func parseOptions(opts *Options, allArgs []string) {
 				nextString(allArgs, &i, "margin required (TRBL / TB,RL / T,RL,B / T,R,B,L)"))
 		case "--tabstop":
 			opts.Tabstop = nextInt(allArgs, &i, "tab stop required")
+		case "--clear":
+			opts.ClearOnExit = true
+		case "--no-clear":
+			opts.ClearOnExit = false
 		case "--version":
 			opts.Version = true
 		default:
@@ -1123,7 +1147,9 @@ func parseOptions(opts *Options, allArgs []string) {
 			} else if match, value := optString(arg, "--toggle-sort="); match {
 				parseToggleSort(opts.Keymap, value)
 			} else if match, value := optString(arg, "--expect="); match {
-				opts.Expect = parseKeyChords(value, "key names required")
+				for k, v := range parseKeyChords(value, "key names required") {
+					opts.Expect[k] = v
+				}
 			} else if match, value := optString(arg, "--tiebreak="); match {
 				opts.Criteria = parseTiebreak(value)
 			} else if match, value := optString(arg, "--color="); match {
@@ -1182,6 +1208,9 @@ func parseOptions(opts *Options, allArgs []string) {
 }
 
 func postProcessOptions(opts *Options) {
+	if util.IsWindows() && opts.Height.size > 0 {
+		errorExit("--height option is currently not supported on Windows")
+	}
 	// Default actions for CTRL-N / CTRL-P when --history is set
 	if opts.History != nil {
 		if _, prs := opts.Keymap[tui.CtrlP]; !prs {

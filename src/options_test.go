@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/junegunn/fzf/src/tui"
-	"github.com/junegunn/fzf/src/util"
 )
 
 func TestDelimiterRegex(t *testing.T) {
@@ -44,7 +43,7 @@ func TestDelimiterRegex(t *testing.T) {
 
 func TestDelimiterRegexString(t *testing.T) {
 	delim := delimiterRegexp("*")
-	tokens := Tokenize(util.RunesToChars([]rune("-*--*---**---")), delim)
+	tokens := Tokenize("-*--*---**---", delim)
 	if delim.regex != nil ||
 		tokens[0].text.ToString() != "-*" ||
 		tokens[1].text.ToString() != "--*" ||
@@ -57,7 +56,7 @@ func TestDelimiterRegexString(t *testing.T) {
 
 func TestDelimiterRegexRegex(t *testing.T) {
 	delim := delimiterRegexp("--\\*")
-	tokens := Tokenize(util.RunesToChars([]rune("-*--*---**---")), delim)
+	tokens := Tokenize("-*--*---**---", delim)
 	if delim.str != nil ||
 		tokens[0].text.ToString() != "-*--*" ||
 		tokens[1].text.ToString() != "---*" ||
@@ -125,14 +124,14 @@ func TestIrrelevantNth(t *testing.T) {
 }
 
 func TestParseKeys(t *testing.T) {
-	pairs := parseKeyChords("ctrl-z,alt-z,f2,@,Alt-a,!,ctrl-G,J,g,ALT-enter,alt-SPACE", "")
+	pairs := parseKeyChords("ctrl-z,alt-z,f2,@,Alt-a,!,ctrl-G,J,g,ctrl-alt-a,ALT-enter,alt-SPACE", "")
 	check := func(i int, s string) {
 		if pairs[i] != s {
 			t.Errorf("%s != %s", pairs[i], s)
 		}
 	}
-	if len(pairs) != 11 {
-		t.Error(11)
+	if len(pairs) != 12 {
+		t.Error(12)
 	}
 	check(tui.CtrlZ, "ctrl-z")
 	check(tui.AltZ, "alt-z")
@@ -143,7 +142,8 @@ func TestParseKeys(t *testing.T) {
 	check(tui.CtrlA+'g'-'a', "ctrl-G")
 	check(tui.AltZ+'J', "J")
 	check(tui.AltZ+'g', "g")
-	check(tui.AltEnter, "ALT-enter")
+	check(tui.CtrlAltA, "ctrl-alt-a")
+	check(tui.CtrlAltM, "ALT-enter")
 	check(tui.AltSpace, "alt-SPACE")
 
 	// Synonyms
@@ -412,5 +412,12 @@ func TestPreviewOpts(t *testing.T) {
 		opts.Preview.size.percent == false &&
 		opts.Preview.size.size == 15+2) {
 		t.Error(opts.Preview)
+	}
+}
+
+func TestAdditiveExpect(t *testing.T) {
+	opts := optsFor("--expect=a", "--expect", "b", "--expect=c")
+	if len(opts.Expect) != 3 {
+		t.Error(opts.Expect)
 	}
 }

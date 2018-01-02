@@ -10,7 +10,7 @@ import (
 func newItem(str string) *Item {
 	bytes := []byte(str)
 	trimmed, _, _ := extractColor(str, nil, nil)
-	return &Item{origText: &bytes, text: util.RunesToChars([]rune(trimmed))}
+	return &Item{origText: &bytes, text: util.ToChars([]byte(trimmed))}
 }
 
 func TestReplacePlaceholder(t *testing.T) {
@@ -90,4 +90,23 @@ func TestReplacePlaceholder(t *testing.T) {
 	// foo'bar baz
 	result = replacePlaceholder("echo {}/{1}/{3}/{2..3}", true, Delimiter{regex: regex}, false, "query", items1)
 	check("echo '  foo'\\''bar baz'/'f'/'r b'/''\\''bar b'")
+}
+
+func TestQuoteEntryCmd(t *testing.T) {
+	tests := map[string]string{
+		`"`:                       `^"\^"^"`,
+		`\`:                       `^"\\^"`,
+		`\"`:                      `^"\\\^"^"`,
+		`"\\\"`:                   `^"\^"\\\\\\\^"^"`,
+		`&|<>()@^%!`:              `^"^&^|^<^>^(^)^@^^^%^!^"`,
+		`%USERPROFILE%`:           `^"^%USERPROFILE^%^"`,
+		`C:\Program Files (x86)\`: `^"C:\\Program Files ^(x86^)\\^"`,
+	}
+
+	for input, expected := range tests {
+		escaped := quoteEntryCmd(input)
+		if escaped != expected {
+			t.Errorf("Input: %s, expected: %s, actual %s", input, expected, escaped)
+		}
+	}
 }
